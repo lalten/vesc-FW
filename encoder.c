@@ -70,7 +70,7 @@ static bool index_found = false;
 static uint32_t enc_counts = 10000;
 static encoder_mode mode = ENCODER_MODE_NONE;
 static float last_enc_angle = 0.0;
-static int32_t cumulative_encoder_counts = 0;
+static volatile int32_t cumulative_encoder_counts = 0;
 static uint32_t last_encoder_counts = 0;
 
 // Private functions
@@ -118,6 +118,7 @@ void encoder_init_abi(uint32_t counts) {
 			TIM_ICPolarity_Rising,
 			TIM_ICPolarity_Rising);
 	TIM_SetAutoreload(HW_ENC_TIM, enc_counts - 1);
+	// TIM_SetAutoreload(HW_ENC_TIM, 0xFFFF);
 
 	// Filter
 	HW_ENC_TIM->CCMR1 |= 6 << 12 | 6 << 4;
@@ -188,7 +189,7 @@ float encoder_read_deg(void) {
 
 	switch (mode) {
 	case ENCODER_MODE_ABI:
-		angle = ((float)HW_ENC_TIM->CNT * 360.0) / (float)enc_counts;
+		angle = ((float) (cumulative_encoder_counts + (int16_t) HW_ENC_TIM->CNT)* 360.0) / (float) enc_counts;
 		break;
 
 	case ENCODER_MODE_AS5047P_SPI:
@@ -232,6 +233,7 @@ void encoder_reset(void) {
 			// Some plausibility filtering.
 			if (cnt > (enc_counts - lim) || cnt < lim) {
 				HW_ENC_TIM->CNT = 0;
+				cumulative_encoder_counts += (int16_t) cnt;
 				bad_pulses = 0;
 			} else {
 				bad_pulses++;
@@ -242,6 +244,7 @@ void encoder_reset(void) {
 			}
 		} else {
 			HW_ENC_TIM->CNT = 0;
+			cumulative_encoder_counts = 0;
 			index_found = true;
 			bad_pulses = 0;
 		}
@@ -287,6 +290,7 @@ void encoder_set_counts(uint32_t counts) {
 	if (counts != enc_counts) {
 		enc_counts = counts;
 		TIM_SetAutoreload(HW_ENC_TIM, enc_counts - 1);
+		// TIM_SetAutoreload(HW_ENC_TIM, 0xFFFF);
 		index_found = false;
 	}
 }
